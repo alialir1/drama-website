@@ -1,0 +1,21 @@
+# Node modules and build files
+node_modules/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHP
+composer.lock
+vendor/
+
+# Environment
+.env
+.env.local
