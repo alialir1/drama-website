@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 const API_BASE = 'https://anyshort.net/v1';
 const CACHE_DIR = __DIR__ . '/cache/';
 const CACHE_TTL = 300;
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36';
 
 if (!is_dir(CACHE_DIR)) {
     @mkdir(CACHE_DIR, 0755, true);
@@ -31,24 +31,50 @@ function makeRequest($endpoint, $params = [], $method = 'GET') {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 15,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_CONNECTTIMEOUT => 20,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 5,
         CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+        CURLOPT_ENCODING => 'gzip, deflate',
         CURLOPT_HTTPHEADER => [
+            'Host: anyshort.net',
             'User-Agent: ' . USER_AGENT,
             'Accept-Language: ar-IQ,ar;q=0.9',
-            'Accept: application/json',
+            'Accept: application/json, text/plain, */*',
+            'Accept-Encoding: gzip, deflate, br',
+            'Origin: https://anyshort.net',
+            'Referer: https://anyshort.net/ar/',
+            'Connection: keep-alive',
+            'Cache-Control: max-age=0',
         ],
     ]);
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
     curl_close($ch);
 
-    if ($httpCode === 200 && $response) {
-        return json_decode($response, true);
+    // معالجة الأخطاء
+    if ($curlError) {
+        return ['error' => true, 'message' => 'خطأ في الاتصال: ' . $curlError, 'code' => 0];
     }
 
-    return ['error' => true, 'message' => 'فشل الاتصال بـ API', 'code' => $httpCode];
+    if (!$response) {
+        return ['error' => true, 'message' => 'لم يتم الحصول على رد من الخادم', 'code' => $httpCode];
+    }
+
+    if ($httpCode !== 200) {
+        return ['error' => true, 'message' => 'خطأ من الخادم: ' . $httpCode, 'code' => $httpCode, 'response' => substr($response, 0, 200)];
+    }
+
+    $decoded = json_decode($response, true);
+    if ($decoded === null) {
+        return ['error' => true, 'message' => 'رد غير صالح من API', 'code' => $httpCode];
+    }
+
+    return $decoded;
 }
 
 function getFromCache($key) {
@@ -64,11 +90,45 @@ function saveToCache($key, $data) {
     @file_put_contents($file, json_encode($data, JSON_UNESCAPED_UNICODE));
 }
 
+// إضافة بيانات تجريبية للاختبار
+function getDemoData($action) {
+    switch ($action) {
+        case 'home':
+            return [
+                'data' => [
+                    'featured' => [
+                        ['id' => 1, 'title' => 'مسلسل تجريبي 1', 'poster' => 'https://via.placeholder.com/200x300?text=Demo1', 'rating' => '8.5', 'description' => 'وصف تجريبي'],
+                        ['id' => 2, 'title' => 'مسلسل تجريبي 2', 'poster' => 'https://via.placeholder.com/200x300?text=Demo2', 'rating' => '8.0', 'description' => 'وصف تجريبي'],
+                    ],
+                    'results' => [
+                        ['id' => 3, 'title' => 'فيلم تجريبي 1', 'poster' => 'https://via.placeholder.com/200x300?text=Film1', 'rating' => '7.5', 'description' => 'وصف تجريبي'],
+                    ]
+                ]
+            ];
+        case 'browse':
+            return [
+                'data' => [
+                    ['id' => 4, 'title' => 'محتوى تجريبي', 'poster' => 'https://via.placeholder.com/200x300?text=Browse', 'rating' => '8.2', 'description' => 'وصف'],
+                ]
+            ];
+        default:
+            return ['data' => []];
+    }
+}
+
 $action = $_GET['action'] ?? null;
 $lang = $_GET['lang'] ?? 'ar';
+$demo = isset($_GET['demo']); // اضغط ?demo=1 للاختبار
 
 if (!$action) {
     echo json_encode(['error' => true, 'message' => 'حدد action'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// إذا كان وضع التجريب - استخدم بيانات وهمية
+if ($demo) {
+    $result = getDemoData($action);
+    echo json_encode($result, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
